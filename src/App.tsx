@@ -1,5 +1,4 @@
 function App() {
-  const unused = 'This is unused';
   return (
     <main>
       <div className="card">
