@@ -15,3 +15,14 @@ output "s3_bucket_name" {
 output "cloudfront_distribution_id" {
   value = aws_cloudfront_distribution.site.id
 }
+
+# This is the ARN of the ACM certificate that will be used to secure the site
+# This is used to validate the certificate
+# AWS needs me to prove I own the domain, since anyone could request an SSL cert for any domain
+# AWS says "add this specific CNAME record to my domain's DNS and only someone who controls the domain can do that" 
+# Thme CNAME is a unique name that I add to cloudflare to prove I can control and edit the DNS
+# Once AWS can see the valid CNAME, they will validate the certificate
+output "acm_certificate_validation_record" {
+  description = "Add this CNAME to Cloudflare DNS to validate the certificate"
+  value = aws_acm_certificate.site.domain_validation_options
+}

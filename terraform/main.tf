@@ -22,7 +22,9 @@ provider "aws" {
 # Create a resource of type aws_s3_bucket
 # This resource will create an S3 bucket in the AWS account
 # The bucket name is "stephen-2026-ci-cd-test"
-# "site" is the name of the resource meaning it is the name of the bucket
+# "site" is the name of the resource which is used to reference the bucket in the other resources as resource_type.local_name.attribute so -> aws_s3_bucket.site.[some attribute]
+# All the resources belong to the same site so I use "site" as the local_name for all the resources
+# If we had multiple resources of the same type, I'd need to use different local_names like two s3 buckets "site" and "logs"
 resource "aws_s3_bucket" "site" {
     bucket = "stephen-2026-ci-cd-test"
 }
@@ -53,6 +55,9 @@ resource "aws_cloudfront_distribution" "site" {
     enabled = true # Turn on the distribution
     default_root_object = "index.html" # When someone visits root URL(/), serve index.html
     price_class = "PriceClass_100" # Cheapest price class for controlling which edge locaitons are used
+
+    aliases = ["stephenspencerwong.dev", "www.stephenspencerwong.dev"] # The custom domain names to use for the distribution
+
 
     # Create an origin for the distribution
     # An origin is where CloudFront will go to get the files
@@ -107,11 +112,13 @@ resource "aws_cloudfront_distribution" "site" {
         }
     }
 
-    # This uses CF's default SSL certificate, which workes for *.cloudfront.net domains
-    # If I had a custom domain, I'd swap this out for an ACM certificate
+    # We don't want to use the CF default certificate provided by AWS, because I am now using a custom domain
+    # Instead, we will use the ACM certificate I created below
     viewer_certificate {
-        # Use the default certificate provided by AWS
-        cloudfront_default_certificate = true 
+        acm_certificate_arn = aws_acm_certificate_validation.site.certificate_arn # Use the now validated ACM certificate
+        ssl_support_method = "sni-only" # SNI (Server Name Indication) allows multiple secure domains to share a single IP address and the server relies on the client's browser to specify a domain name to connect to
+        minimum_protocol_version = "TLSv1.2_2021" # This is the minimum protocol version that is supported by the certificate
+        
     }
 }
 
@@ -140,4 +147,26 @@ resource "aws_s3_bucket_policy" "site" {
       }
     ]
   })
+}
+
+# Request a new certificate from the AWC certificate manager (ACM)
+# This is necessary for a custom domain
+# Wihtout it, the site would not be secure (https)
+resource "aws_acm_certificate" "site" {
+    domain_name = "stephenspencerwong.dev" # The domain name to request the certificate for
+    validation_method = "DNS" # Use DNS validation to verify ownership of the domain
+    subject_alternative_names = ["www.stephenspencerwong.dev"] # Also request a certificate for the www subdomain
+
+    # The lifecycle block customizes how Terraform handles this resource
+    # In this case, we want to create a new cert before destroying the old one
+    # This is because the new cert will be validated by AWS, then the old one can be destroyed
+    # This prevents downtime when the certificate is being validated
+    lifecycle {
+        create_before_destroy = true
+    }
+}
+
+# Validate the certificate
+resource "aws_acm_certificate_validation" "site" {
+    certificate_arn = aws_acm_certificate.site.arn
 }
